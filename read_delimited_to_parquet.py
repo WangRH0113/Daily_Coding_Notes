@@ -11,18 +11,6 @@ def sniff_delimiter(line, candidates=[",","|",";","\t"]):
     counts = {c: line.count(c) for c in candidates}
     return max(counts, key=counts.get) if line else ","
 
-def add_metadata(df):
-    fn = F.regexp_extract(F.input_file_name(), r"/([^/]+)$", 1)
-    return (df.withColumn("source_file", fn)
-              .withColumn("customer_abbr", F.regexp_extract(fn, FILE_RX, 1))
-              .withColumn("wrid", F.regexp_extract(fn, FILE_RX, 2))
-              .withColumn("job_date", F.to_date(F.regexp_extract(fn, FILE_RX, 3), "yyyyMMdd"))
-              .withColumn("file_kind",
-                  F.when(fn.rlike("_monitor"), "monitor")
-                   .when(fn.rlike("_append"), "output")
-                   .otherwise("input"))
-              .withColumn("ingest_ts", F.current_timestamp()))
-
 def main(base, glob="**/*.*", out_parquet=None):
     spark = SparkSession.builder.getOrCreate()
     glob_path = f"{base}/{glob}"
@@ -35,14 +23,11 @@ def main(base, glob="**/*.*", out_parquet=None):
             .option("header", "true")
             .option("delimiter", delimiter)
             .csv(glob_path))
-    
-    df = add_metadata(df)
+
     df.show(5, truncate=False)
     
     if out_parquet:
-        (df.repartition("customer_abbr","wrid")
-           .write.mode("append")
-           .partitionBy("customer_abbr","wrid")
+        (df.write.mode("append")
            .parquet(out_parquet))
 
 # Example (in Databricks notebook):
